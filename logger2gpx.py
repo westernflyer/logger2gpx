@@ -1,4 +1,4 @@
-# gpx_generator.py
+# logger2gpx.py
 import sqlite3
 import yaml
 import argparse
