@@ -1,0 +1,37 @@
+# config.yaml
+database:
+  path: "/Users/tkeffer/WesternFlyerData/wf-logger/wf-logger.sdb"
+
+gpx:
+  # GPX metadata
+  name: "Western Flyer track"
+  description: "Leg 4 track"
+  author: "Archive GPX Generator"
+
+  # Output settings
+  output_directory: "/Users/tkeffer/WesternFlyerData/wf-logger/"
+  filename: "leg_4.gpx"
+
+  # Data filtering
+  filters:
+    # Skip points with NULL coordinates
+    skip_null_coordinates: true
+    # Minimum distance between points (in meters, optional)
+    min_distance_between_points: 100
+
+  # Subsample in time
+  subsampling:
+    # Enable subsampling
+    enabled: false
+    # Interval in seconds (60 = once per minute)
+    interval_seconds: 60
+    # Method: 'first', 'last', 'closest_to_interval', or 'average'
+    method: 'last'
+
+# Time format for the config file and command line (ISO format recommended)
+time_format: "%Y-%m-%d %H:%M:%S"
+
+# Optional: Default time range in local time (can be overridden by command line)
+default_time_range:
+  start_time: "2025-05-09 00:00:00"
+  end_time: "2025-05-29 00:00:00"
