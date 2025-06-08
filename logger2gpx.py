@@ -1,4 +1,5 @@
 # logger2gpx.py
+"""Extract GPX track data from the metdata locations supplied by Jesus"""
 import sqlite3
 import yaml
 import argparse
@@ -53,8 +54,8 @@ class GPXGenerator:
         """
         Fetches track data from the database within an optional time range, ordered by timestamp.
 
-        This method queries the database table `archive` to retrieve data including
-        timestamp, latitude, longitude, and depth. Optional parameters `start_time` and
+        This method queries the database table `location_data` to retrieve data including
+        timestamp, latitude, longitude, and heading. Optional parameters `start_time` and
         `end_time` can be supplied to filter the results within a specific time range. If no
         time range is provided, all available records in the table are retrieved. The query
         is executed using a database connection established via `connect_db`.
@@ -64,14 +65,14 @@ class GPXGenerator:
         :param end_time: Optional; the end of the time range for filtering records.
             Only records with a timestamp equal to or less than this value will be included.
         :return: A list of tuples representing the fetched data, where each tuple consists
-            of a timestamp, latitude, longitude, and depth.
+            of a timestamp, latitude, longitude, and heading.
         :rtype: list[tuple]
         """
         with self.connect_db() as conn:
             cursor = conn.cursor()
 
             # Build query with optional time constraints
-            query = "SELECT timestamp, latitude, longitude, depth FROM archive"
+            query = "SELECT timestamp, latitude, longitude, heading FROM location_data"
             params = []
 
             conditions = []
@@ -93,7 +94,7 @@ class GPXGenerator:
         return data
 
     def subsample_data(self, data):
-        """Subsample data according to configuration."""
+        """Subsample data according to a specified interval."""
         if not self.config['gpx']['subsampling']['enabled']:
             return data
 
@@ -213,7 +214,7 @@ class GPXGenerator:
         # Group data by intervals
         intervals = {}
         for row in data:
-            timestamp, lat, lon, depth = row
+            timestamp, lat, lon, heading = row
             interval_index = (timestamp - start_time) // interval
 
             if interval_index not in intervals:
@@ -228,14 +229,14 @@ class GPXGenerator:
             timestamps = [p[0] for p in points]
             latitudes = [p[1] for p in points if p[1] is not None]
             longitudes = [p[2] for p in points if p[2] is not None]
-            depths = [p[3] for p in points if p[3] is not None]
+            headings = [p[3] for p in points if p[3] is not None]
 
             avg_timestamp = sum(timestamps) / len(timestamps)
             avg_lat = sum(latitudes) / len(latitudes) if latitudes else None
             avg_lon = sum(longitudes) / len(longitudes) if longitudes else None
-            avg_depth = sum(depths) / len(depths) if depths else None
+            avg_heading = sum(headings) / len(headings) if headings else None
 
-            subsampled.append((int(avg_timestamp), avg_lat, avg_lon, avg_depth))
+            subsampled.append((int(avg_timestamp), avg_lat, avg_lon, avg_heading))
 
         return subsampled
 
@@ -247,7 +248,7 @@ class GPXGenerator:
         skip_null = self.config['gpx']['filters']['skip_null_coordinates']
 
         for row in data:
-            timestamp, lat, lon, depth = row
+            timestamp, lat, lon, heading = row
 
             # Skip points with NULL coordinates if configured
             if skip_null and (lat is None or lon is None):
@@ -298,17 +299,12 @@ class GPXGenerator:
 
         # Add track points
         for row in track_data:
-            timestamp, lat, lon, depth = row
+            timestamp, lat, lon, heading = row
 
             if lat is not None and lon is not None:
                 trkpt = SubElement(trkseg, 'trkpt')
                 trkpt.set('lat', str(lat))
                 trkpt.set('lon', str(lon))
-
-                # Add elevation if depth is available (convert depth to elevation)
-                if depth is not None:
-                    ele = SubElement(trkpt, 'ele')
-                    ele.text = str(-depth)  # Depth is typically negative elevation
 
                 # Add timestamp
                 time_elem = SubElement(trkpt, 'time')
@@ -386,7 +382,7 @@ class GPXGenerator:
 
 def main():
     """Command line interface."""
-    parser = argparse.ArgumentParser(description='Generate GPX tracks from archive database')
+    parser = argparse.ArgumentParser(description='Generate GPX tracks from location database')
     parser.add_argument('--config', default='config.yaml', help='Configuration file path')
     parser.add_argument('--start', help='Start time (YYYY-MM-DD HH:MM:SS)')
     parser.add_argument('--end', help='End time (YYYY-MM-DD HH:MM:SS)')

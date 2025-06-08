@@ -1,15 +1,15 @@
 # config.yaml
 database:
-  path: "/Users/tkeffer/WesternFlyerData/wf-logger/wf-logger.sdb"
+  path: "/Users/tkeffer/WesternFlyerData/metdata/track/WFF_Pos_1min.sdb"
 
 gpx:
   # GPX metadata
   name: "Western Flyer track"
   description: "Leg 3 track"
-  author: "Archive GPX Generator"
+  author: "GPX Extractor"
 
   # Output settings
-  output_directory: "/Users/tkeffer/WesternFlyerData/wf-logger/"
+  output_directory: "/Users/tkeffer/WesternFlyerData/metdata/track/"
   filename: "leg_3.gpx"
 
   # Data filtering
@@ -33,5 +33,5 @@ time_format: "%Y-%m-%d %H:%M:%S"
 
 # Optional: Default time range in local time (can be overridden by command line)
 default_time_range:
-  start_time: "2025-04-25 00:00:00"
+  start_time: "2025-04-25 12:00:00"
   end_time: "2025-05-09 00:00:00"
