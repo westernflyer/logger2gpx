@@ -2,7 +2,11 @@
 
 """Extract GPX track data from a sqlite file containing position
 data. The sqlite file should contain a table named `location_data` with
-columns `timestamp`, `latitude`, `longitude`."""
+columns `timestamp`, `latitude`, `longitude`.
+
+The program offers the opportunity to filter the data based on a minimum distance
+between points.
+"""
 
 import sqlite3
 import yaml
@@ -26,7 +30,8 @@ class GPXGenerator:
         """Connect to the SQLite database."""
         return sqlite3.connect(self.db_path)
 
-    def timestamp_to_iso(self, timestamp):
+    @staticmethod
+    def timestamp_to_iso(timestamp):
         """Convert Unix timestamp to ISO format for GPX."""
         return datetime.fromtimestamp(timestamp).isoformat() + 'Z'
 
@@ -37,7 +42,8 @@ class GPXGenerator:
             return int(dt.timestamp())
         return None
 
-    def calculate_distance(self, lat1, lon1, lat2, lon2):
+    @staticmethod
+    def calculate_distance(lat1, lon1, lat2, lon2):
         """Calculate distance between two points using Haversine formula."""
         if None in [lat1, lon1, lat2, lon2]:
             return float('inf')
@@ -97,150 +103,6 @@ class GPXGenerator:
 
         return data
 
-    def subsample_data(self, data):
-        """Subsample data according to a specified interval."""
-        if not self.config['gpx']['subsampling']['enabled']:
-            return data
-
-        if not data:
-            return data
-
-        interval = self.config['gpx']['subsampling']['interval_seconds']
-        method = self.config['gpx']['subsampling']['method']
-
-        print(f"Subsampling data with {interval}s interval using '{method}' method...")
-
-        subsampled = []
-
-        if method == 'first':
-            subsampled = self._subsample_first(data, interval)
-        elif method == 'last':
-            subsampled = self._subsample_last(data, interval)
-        elif method == 'closest_to_interval':
-            subsampled = self._subsample_closest(data, interval)
-        elif method == 'average':
-            subsampled = self._subsample_average(data, interval)
-        else:
-            raise ValueError(f"Unknown subsampling method: {method}")
-
-        print(f"Subsampled from {len(data)} to {len(subsampled)} points")
-        return subsampled
-
-    def _subsample_first(self, data, interval):
-        """Take the first point in each interval."""
-        if not data:
-            return data
-
-        subsampled = []
-        start_time = data[0][0]  # First timestamp
-        current_interval_start = start_time
-
-        for row in data:
-            timestamp = row[0]
-
-            # If we've moved to a new interval, take this point
-            if timestamp >= current_interval_start:
-                subsampled.append(row)
-                # Move to next interval
-                current_interval_start = timestamp + interval
-
-        return subsampled
-
-    def _subsample_last(self, data, interval):
-        """Take the last point in each interval."""
-        if not data:
-            return data
-
-        subsampled = []
-        start_time = data[0][0]
-
-        # Group data by intervals
-        intervals = {}
-        for row in data:
-            timestamp = row[0]
-            interval_index = (timestamp - start_time) // interval
-            intervals[interval_index] = row  # This will keep the last one for each interval
-
-        # Sort by interval index and return
-        for interval_index in sorted(intervals.keys()):
-            subsampled.append(intervals[interval_index])
-
-        return subsampled
-
-    def _subsample_closest(self, data, interval):
-        """Take the point closest to each interval boundary."""
-        if not data:
-            return data
-
-        subsampled = []
-        start_time = data[0][0]
-
-        # Calculate target times for each interval
-        current_target = start_time
-        end_time = data[-1][0]
-
-        i = 0
-        while current_target <= end_time and i < len(data):
-            # Find the point closest to current_target
-            closest_point = None
-            min_diff = float('inf')
-
-            # Look at points around the target time
-            while i < len(data):
-                timestamp = data[i][0]
-                diff = abs(timestamp - current_target)
-
-                if diff < min_diff:
-                    min_diff = diff
-                    closest_point = data[i]
-                    i += 1
-                elif diff > min_diff:
-                    # We've passed the closest point, break
-                    break
-                else:
-                    i += 1
-
-            if closest_point:
-                subsampled.append(closest_point)
-
-            current_target += interval
-
-        return subsampled
-
-    def _subsample_average(self, data, interval):
-        """Average all points within each interval."""
-        if not data:
-            return data
-
-        subsampled = []
-        start_time = data[0][0]
-
-        # Group data by intervals
-        intervals = {}
-        for row in data:
-            timestamp, lat, lon = row
-            interval_index = (timestamp - start_time) // interval
-
-            if interval_index not in intervals:
-                intervals[interval_index] = []
-            intervals[interval_index].append(row)
-
-        # Average each interval
-        for interval_index in sorted(intervals.keys()):
-            points = intervals[interval_index]
-
-            # Calculate averages (skip None values)
-            timestamps = [p[0] for p in points]
-            latitudes = [p[1] for p in points if p[1] is not None]
-            longitudes = [p[2] for p in points if p[2] is not None]
-
-            avg_timestamp = sum(timestamps) / len(timestamps)
-            avg_lat = sum(latitudes) / len(latitudes) if latitudes else None
-            avg_lon = sum(longitudes) / len(longitudes) if longitudes else None
-
-            subsampled.append((int(avg_timestamp), avg_lat, avg_lon))
-
-        return subsampled
 
     def filter_track_points(self, data):
         """Apply filters to track points."""
@@ -269,6 +131,10 @@ class GPXGenerator:
 
     def create_gpx(self, track_data, start_time_str=None, end_time_str=None):
         """Create GPX XML from track data."""
+
+        # Get interpolation dictionary:
+        interp_dict = self.config['gpx']
+
         # Create root GPX element
         gpx = Element('gpx')
         gpx.set('version', '1.1')
@@ -278,23 +144,17 @@ class GPXGenerator:
         # Add metadata
         metadata = SubElement(gpx, 'metadata')
         name = SubElement(metadata, 'name')
-        name.text = self.config['gpx']['name']
+        name.text = self.config['gpx']['gpx_name'].format_map(interp_dict)
 
         desc = SubElement(metadata, 'desc')
-        desc.text = self.config['gpx']['description']
+        desc.text = self.config['gpx']['description'].format_map(interp_dict)
         if start_time_str and end_time_str:
             desc.text += f" (From {start_time_str} to {end_time_str})"
-
-        # Add subsampling info to description
-        if self.config['gpx']['subsampling']['enabled']:
-            interval = self.config['gpx']['subsampling']['interval_seconds']
-            method = self.config['gpx']['subsampling']['method']
-            desc.text += f" - Subsampled every {interval}s using {method} method"
 
         # Create track
         trk = SubElement(gpx, 'trk')
         trk_name = SubElement(trk, 'name')
-        trk_name.text = f"Western Flyer track"
+        trk_name.text = self.config['gpx']['track_name'].format_map(interp_dict)
 
         # Create track segment
         trkseg = SubElement(trk, 'trkseg')
@@ -305,12 +165,12 @@ class GPXGenerator:
 
             if lat is not None and lon is not None:
                 trkpt = SubElement(trkseg, 'trkpt')
-                trkpt.set('lat', str(lat))
-                trkpt.set('lon', str(lon))
+                trkpt.set('lat', str(f"{lat:.5f}"))
+                trkpt.set('lon', str(f"{lon:.5f}"))
 
                 # Add timestamp
                 time_elem = SubElement(trkpt, 'time')
-                time_elem.text = self.timestamp_to_iso(timestamp)
+                time_elem.text = GPXGenerator.timestamp_to_iso(timestamp)
 
         return gpx
 
@@ -358,11 +218,8 @@ class GPXGenerator:
 
         print(f"Found {len(raw_data)} raw data points.")
 
-        # Apply subsampling
-        subsampled_data = self.subsample_data(raw_data)
-
         # Filter data
-        filtered_data = self.filter_track_points(subsampled_data)
+        filtered_data = self.filter_track_points(raw_data)
         print(f"Filtered to {len(filtered_data)} track points.")
 
         if not filtered_data:
@@ -373,7 +230,9 @@ class GPXGenerator:
         gpx_element = self.create_gpx(filtered_data, start_time_str, end_time_str)
 
         # Generate filename and save
-        filename = self.config['gpx']['filename']
+        filename = self.config['gpx']['filename'].format_map(self.config['gpx'])
+        # Make sure there are no spaces in the filename
+        filename = filename.replace(' ', '_')
         if not filename.endswith('.gpx'):
             filename += '.gpx'
         filepath = self.save_gpx(gpx_element, filename)
@@ -388,23 +247,12 @@ def main():
     parser.add_argument('--config', default='config.yaml', help='Configuration file path')
     parser.add_argument('--start', help='Start time (YYYY-MM-DD HH:MM:SS)')
     parser.add_argument('--end', help='End time (YYYY-MM-DD HH:MM:SS)')
-    parser.add_argument('--no-subsample', action='store_true', help='Disable subsampling for this run')
-    parser.add_argument('--interval', type=int, help='Override subsampling interval (seconds)')
 
     args = parser.parse_args()
 
-    try:
-        generator = GPXGenerator(args.config)
+    generator = GPXGenerator(args.config)
 
-        # Override subsampling settings from command line
-        if args.no_subsample:
-            generator.config['gpx']['subsampling']['enabled'] = False
-        if args.interval:
-            generator.config['gpx']['subsampling']['interval_seconds'] = args.interval
-
-        generator.generate_gpx_track(args.start, args.end)
-    except Exception as e:
-        print(f"Error: {e}")
+    generator.generate_gpx_track(args.start, args.end)
 
 
 if __name__ == "__main__":

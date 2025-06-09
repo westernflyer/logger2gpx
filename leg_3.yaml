@@ -4,13 +4,15 @@ database:
 
 gpx:
   # GPX metadata
-  name: "Western Flyer track"
-  description: "Leg 3 track"
-  author: "GPX Extractor"
+  leg_name: "Leg 3"
+  gpx_name: "Western Flyer {leg_name}"
+  description: "{leg_name} track"
+  track_name: "{leg_name}"
+  author: "logger2gpx.py"
 
   # Output settings
   output_directory: "/Users/tkeffer/WesternFlyerData/metdata/track/"
-  filename: "leg_3.gpx"
+  filename: "{leg_name}.gpx"
 
   # Data filtering
   filters:
@@ -18,15 +20,6 @@ gpx:
     skip_null_coordinates: true
     # Minimum distance between points (in meters, optional)
     min_distance_between_points: 100
-
-  # Subsample in time
-  subsampling:
-    # Enable subsampling
-    enabled: false
-    # Interval in seconds (60 = once per minute)
-    interval_seconds: 60
-    # Method: 'first', 'last', 'closest_to_interval', or 'average'
-    method: 'last'
 
 # Time format for the config file and command line (ISO format recommended)
 time_format: "%Y-%m-%d %H:%M:%S"
