@@ -1,5 +1,9 @@
 # logger2gpx.py
-"""Extract GPX track data from the metdata locations supplied by Jesus"""
+
+"""Extract GPX track data from a sqlite file containing position
+data. The sqlite file should contain a table named `location_data` with
+columns `timestamp`, `latitude`, `longitude`."""
+
 import sqlite3
 import yaml
 import argparse
@@ -55,7 +59,7 @@ class GPXGenerator:
         Fetches track data from the database within an optional time range, ordered by timestamp.
 
         This method queries the database table `location_data` to retrieve data including
-        timestamp, latitude, longitude, and heading. Optional parameters `start_time` and
+        timestamp, latitude, and longitude. Optional parameters `start_time` and
         `end_time` can be supplied to filter the results within a specific time range. If no
         time range is provided, all available records in the table are retrieved. The query
         is executed using a database connection established via `connect_db`.
@@ -72,7 +76,7 @@ class GPXGenerator:
             cursor = conn.cursor()
 
             # Build query with optional time constraints
-            query = "SELECT timestamp, latitude, longitude, heading FROM location_data"
+            query = "SELECT timestamp, latitude, longitude FROM location_data"
             params = []
 
             conditions = []
@@ -214,7 +218,7 @@ class GPXGenerator:
         # Group data by intervals
         intervals = {}
         for row in data:
-            timestamp, lat, lon, heading = row
+            timestamp, lat, lon = row
             interval_index = (timestamp - start_time) // interval
 
             if interval_index not in intervals:
@@ -229,14 +233,12 @@ class GPXGenerator:
             timestamps = [p[0] for p in points]
             latitudes = [p[1] for p in points if p[1] is not None]
             longitudes = [p[2] for p in points if p[2] is not None]
-            headings = [p[3] for p in points if p[3] is not None]
 
             avg_timestamp = sum(timestamps) / len(timestamps)
             avg_lat = sum(latitudes) / len(latitudes) if latitudes else None
             avg_lon = sum(longitudes) / len(longitudes) if longitudes else None
-            avg_heading = sum(headings) / len(headings) if headings else None
 
-            subsampled.append((int(avg_timestamp), avg_lat, avg_lon, avg_heading))
+            subsampled.append((int(avg_timestamp), avg_lat, avg_lon))
 
         return subsampled
 
@@ -248,7 +250,7 @@ class GPXGenerator:
         skip_null = self.config['gpx']['filters']['skip_null_coordinates']
 
         for row in data:
-            timestamp, lat, lon, heading = row
+            timestamp, lat, lon = row
 
             # Skip points with NULL coordinates if configured
             if skip_null and (lat is None or lon is None):
@@ -299,7 +301,7 @@ class GPXGenerator:
 
         # Add track points
         for row in track_data:
-            timestamp, lat, lon, heading = row
+            timestamp, lat, lon = row
 
             if lat is not None and lon is not None:
                 trkpt = SubElement(trkseg, 'trkpt')
