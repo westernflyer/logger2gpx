@@ -22,13 +22,7 @@ class GPXGenerator:
     def __init__(self, config_path="config.yaml"):
         """Initialize the GPX generator with configuration."""
         with open(config_path, 'r') as f:
-            self.config = yaml.safe_load(f)
-
-        self.db_path = self.config['database']['path']
-
-    def connect_db(self):
-        """Connect to the SQLite database."""
-        return sqlite3.connect(self.db_path)
+            self.config_dict = yaml.safe_load(f)
 
     @staticmethod
     def timestamp_to_iso(timestamp):
@@ -38,7 +32,7 @@ class GPXGenerator:
     def parse_time_input(self, time_str):
         """Parse time string. The string should be in local time. Returns unix epoch time"""
         if time_str:
-            dt = datetime.strptime(time_str, self.config['time_format'])
+            dt = datetime.strptime(time_str, self.config_dict['time_format'])
             return int(dt.timestamp())
         return None
 
@@ -78,7 +72,7 @@ class GPXGenerator:
             of a timestamp, latitude, longitude, and heading.
         :rtype: list[tuple]
         """
-        with self.connect_db() as conn:
+        with sqlite3.connect(self.config_dict['database']['path']) as conn:
             cursor = conn.cursor()
 
             # Build query with optional time constraints
@@ -108,8 +102,8 @@ class GPXGenerator:
         """Apply filters to track points."""
         filtered_data = []
         last_lat, last_lon = None, None
-        min_distance = self.config['gpx']['filters']['min_distance_between_points']
-        skip_null = self.config['gpx']['filters']['skip_null_coordinates']
+        min_distance = self.config_dict['gpx']['filters']['min_distance_between_points']
+        skip_null = self.config_dict['gpx']['filters']['skip_null_coordinates']
 
         for row in data:
             timestamp, lat, lon = row
@@ -133,28 +127,28 @@ class GPXGenerator:
         """Create GPX XML from track data."""
 
         # Get interpolation dictionary:
-        interp_dict = self.config['gpx']
+        interp_dict = self.config_dict['gpx']
 
         # Create root GPX element
         gpx = Element('gpx')
         gpx.set('version', '1.1')
-        gpx.set('creator', self.config['gpx']['author'])
+        gpx.set('creator', self.config_dict['gpx']['author'])
         gpx.set('xmlns', 'http://www.topografix.com/GPX/1/1')
 
         # Add metadata
         metadata = SubElement(gpx, 'metadata')
         name = SubElement(metadata, 'name')
-        name.text = self.config['gpx']['gpx_name'].format_map(interp_dict)
+        name.text = self.config_dict['gpx']['gpx_name'].format_map(interp_dict)
 
         desc = SubElement(metadata, 'desc')
-        desc.text = self.config['gpx']['description'].format_map(interp_dict)
+        desc.text = self.config_dict['gpx']['description'].format_map(interp_dict)
         if start_time_str and end_time_str:
             desc.text += f" (From {start_time_str} to {end_time_str})"
 
         # Create track
         trk = SubElement(gpx, 'trk')
         trk_name = SubElement(trk, 'name')
-        trk_name.text = self.config['gpx']['track_name'].format_map(interp_dict)
+        trk_name.text = self.config_dict['gpx']['track_name'].format_map(interp_dict)
 
         # Create track segment
         trkseg = SubElement(trk, 'trkseg')
@@ -177,7 +171,7 @@ class GPXGenerator:
     def save_gpx(self, gpx_element, filename):
         """Save GPX to file with pretty formatting."""
         # Create output directory if it doesn't exist
-        output_dir = self.config['gpx']['output_directory']
+        output_dir = self.config_dict['gpx']['output_directory']
         os.makedirs(output_dir, exist_ok=True)
 
         # Pretty print XML
@@ -193,19 +187,19 @@ class GPXGenerator:
         return filepath
 
 
-    def generate_gpx_track(self, start_time_str=None, end_time_str=None):
+    def generate_gpx_track(self, start_time_str: str | None = None, end_time_str: str | None = None) -> str | None:
         """Main method to generate GPX track."""
         # Parse time inputs
         start_timestamp = self.parse_time_input(start_time_str)
         end_timestamp = self.parse_time_input(end_time_str)
 
         # Use default times from config if not provided
-        if not start_time_str and 'start_time' in self.config.get('default_time_range', {}):
-            start_time_str = self.config['default_time_range']['start_time']
+        if not start_time_str and 'start_time' in self.config_dict.get('default_time_range', {}):
+            start_time_str = self.config_dict['default_time_range']['start_time']
             start_timestamp = self.parse_time_input(start_time_str)
 
-        if not end_time_str and 'end_time' in self.config.get('default_time_range', {}):
-            end_time_str = self.config['default_time_range']['end_time']
+        if not end_time_str and 'end_time' in self.config_dict.get('default_time_range', {}):
+            end_time_str = self.config_dict['default_time_range']['end_time']
             end_timestamp = self.parse_time_input(end_time_str)
 
         # Fetch data
@@ -229,16 +223,7 @@ class GPXGenerator:
         # Create GPX
         gpx_element = self.create_gpx(filtered_data, start_time_str, end_time_str)
 
-        # Generate filename and save
-        filename = self.config['gpx']['filename'].format_map(self.config['gpx'])
-        # Make sure there are no spaces in the filename
-        filename = filename.replace(' ', '_')
-        if not filename.endswith('.gpx'):
-            filename += '.gpx'
-        filepath = self.save_gpx(gpx_element, filename)
-
-        print(f"GPX track saved to: {filepath}")
-        return filepath
+        return gpx_element
 
 
 def main():
@@ -252,8 +237,17 @@ def main():
 
     generator = GPXGenerator(args.config)
 
-    generator.generate_gpx_track(args.start, args.end)
+    gpx_element = generator.generate_gpx_track(args.start, args.end)
 
+    # Generate filename and save
+    filename = generator.config_dict['gpx']['filename'].format_map(generator.config_dict['gpx'])
+    # Make sure there are no spaces in the filename
+    filename = filename.replace(' ', '_')
+    if not filename.endswith('.gpx'):
+        filename += '.gpx'
+    filepath = generator.save_gpx(gpx_element, filename)
+
+    print(f"GPX track saved to: {filepath}")
 
 if __name__ == "__main__":
     main()
