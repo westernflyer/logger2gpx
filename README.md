@@ -11,7 +11,8 @@ CREATE TABLE location_data (timestamp INTEGER NOT NULL UNIQUE PRIMARY KEY,
             latitude REAL, longitude REAL);
 ```
 
-although it can contain additional data fields (such as depth).
+Note that it can also contain additional data fields (such as depth), but they
+are not used.
 
 To generate a GPX file for Leg 3:
 
