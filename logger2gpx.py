@@ -30,34 +30,37 @@ def fetch_data(db_path: str,
     `end_time` can be supplied to filter the results within a specific time range. If no
     time range is provided, all available records in the table are retrieved.
 
-    Args:
+    Parameters
         db_path: Path to the SQLite database file
-        start_time: Optional Unix epoch time for start of range. Records must be after this time
-        end_time: Optional Unix epoch time for end of range. Records must be before or at this time
+        start_time: Optional Unix epoch time for start of range. All returned records will be
+            after this time
+        end_time: Optional Unix epoch time for end of range. All returned records will before or
+            at this time
 
-    Returns:
-        list[tuple]: List of (timestamp, latitude, longitude) tuples ordered by timestamp
+    Returns
+        List of (timestamp, latitude, longitude) tuples ordered by timestamp
     """
+
+    params = []
+    conditions = []
+
+    # Build query with optional time constraints
+    query = "SELECT timestamp, latitude, longitude FROM location_data"
+
+    if start_time:
+        conditions.append("timestamp > ?")
+        params.append(start_time)
+    if end_time:
+        conditions.append("timestamp <= ?")
+        params.append(end_time)
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    query += " ORDER BY timestamp"
+
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
-
-        # Build query with optional time constraints
-        query = "SELECT timestamp, latitude, longitude FROM location_data"
-        params = []
-
-        conditions = []
-        if start_time:
-            conditions.append("timestamp > ?")
-            params.append(start_time)
-        if end_time:
-            conditions.append("timestamp <= ?")
-            params.append(end_time)
-
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-
-        query += " ORDER BY timestamp"
-
         cursor.execute(query, params)
         data = cursor.fetchall()
 
@@ -67,22 +70,15 @@ def fetch_data(db_path: str,
 def filter_data(data: list[tuple], min_distance: float) -> list[tuple[float | int, float, float]]:
     """
     Filters a dataset of geographic coordinates to ensure that consecutive
-    points meet a minimum distance criteria.
+    points meet a minimum distance criterion.
 
     Parameters
-    ----------
-    data : list of tuple
-        A list of tuples, where each tuple represents a data row containing
-        a timestamp, latitude, and longitude. Latitude and longitude may be None
-        for invalid or missing coordinates.
-    min_distance : float
-        The minimum distance in a geographical unit (e.g., meters or kilometers)
-        that should separate consecutive points in the filtered dataset. Zero (0) to include all
-        points.
-
+        data: A list of tuples, where each tuple represents a data row containing
+            a timestamp, latitude, and longitude. Latitude and longitude may be None
+            for invalid or missing coordinates.
+        min_distance: The minimum distance in meters.  Zero (0) to include all points.
+`
     Returns
-    -------
-    list[tuple]:
         A filtered list of tuples from the original dataset, containing only points
         that are either the first valid point or exceed the specified minimum
         distance from the previous valid point.
@@ -121,28 +117,21 @@ def create_gpx(config_dict: dict,
     The GPX document also includes track segments with points (latitude, longitude,
     and timestamp) derived from the provided track data.
 
-    Parameters:
-        config_dict (dict): A dictionary containing configuration information, including
+    Parameters
+        config_dict: A dictionary containing configuration information, including
             details for generating author, GPX name, description, and track name. These
             are used to populate the metadata and track details of the GPX structure.
-        track_data (list[tuple[float | int, float, float]]): A list of tuples,
+        track_data: A list of tuples,
             where each tuple contains a timestamp (as float or int), latitude (as float),
             and longitude (as float). Points with valid latitude and longitude are added
             to the GPX track segment.
-        start_time_str (str | None): An optional string representing the start time. If
+        start_time_str: An optional string representing the start time. If
             provided, it is incorporated into the metadata description. Defaults to None.
-        end_time_str (str | None): An optional string representing the end time. If
+        end_time_str: An optional string representing the end time. If
             provided, it is incorporated into the metadata description. Defaults to None.
 
-    Returns:
-        Element: The root XML element of the GPX structure, representing the generated
-            GPX document.
-
-    Raises:
-        KeyError: Raised when mandatory keys are missing from the `config_dict` dictionary
-            (e.g., keys for author, GPX name, or description).
-        ValueError: Raised if any value in the `track_data` list is invalid or
-            improperly formatted (e.g., invalid latitude or longitude values).
+    Returns
+        The root XML element of the GPX structure, representing the generated GPX document.
     """
 
     # Get interpolation dictionary:
@@ -193,28 +182,24 @@ def save_gpx(gpx_elements: Element, output_dir: str, filename: str) -> str:
     Saves a GPX (GPS Exchange Format) XML element to a file with pretty-printed formatting.
     If the specified output directory does not exist, it creates the directory.
 
-    Parameters:
-        gpx_elements: Element
-            The GPX XML element to be saved.
-        output_dir: str
-            The directory where the file will be saved.
-        filename: str
-            The name of the file to save the GPX content.
+    Parameters
+        gpx_elements: The GPX XML element to be saved.
+        output_dir: The directory where the file will be saved.
+        filename: The name of the file to save the GPX content.
 
-    Returns:
-        str
-            The full file path of the saved GPX file.
+    Returns
+        The full file path of the saved GPX file.
     """
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-
     # Pretty print XML
     rough_string = tostring(gpx_elements, 'utf-8')
     reparsed = minidom.parseString(rough_string)
     pretty_xml = reparsed.toprettyxml(indent="  ", encoding='utf-8')
 
-    # Save to file
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
     filepath = os.path.join(output_dir, filename)
+
+    # Save to file
     with open(filepath, 'wb') as f:
         f.write(pretty_xml)
 
@@ -227,7 +212,15 @@ def save_gpx(gpx_elements: Element, output_dir: str, filename: str) -> str:
 
 
 def timestamp_to_iso(timestamp: float | int) -> str:
-    """Convert Unix timestamp to ISO format."""
+    """
+    Convert a Unix timestamp to an ISO 8601 formatted string.
+
+    Parameters
+        timestamp: The Unix timestamp to be converted.
+
+    Returns
+        The ISO 8601 formatted date-time string, with a 'Z' suffix indicating UTC time.
+    """
     return datetime.fromtimestamp(timestamp).isoformat() + 'Z'
 
 
@@ -236,13 +229,13 @@ def parse_time_input(time_str: str | None, time_format: str) -> int | None:
     Parses a time input string into a Unix timestamp in seconds. Returns None if the input
     time string is None.
 
-    Parameters:
-        time_str (str | None): The time string to parse, or None if no input
-            time is given. Should be in local time.
-        time_format (str): A format string as defined by the datetime module to interpret
+    Parameters
+        time_str: The time string to parse, or None if no input time is given.
+            Should be in local time.
+        time_format: A format string as defined by the datetime module to interpret
             the given time string.
 
-    Returns:
+    Returns
         The time as a Unix timestamp in seconds, or None if the input string is None.
     """
     if not time_str:
@@ -282,7 +275,7 @@ def main():
     with open(args.config, 'r') as f:
         config_dict = yaml.safe_load(f)
 
-    # Calculate the file path to save to:
+    # Form the filename based on the configuration:
     filename = config_dict['gpx']['filename'].format_map(config_dict['gpx'])
     # Make sure there are no spaces in the filename
     filename = filename.replace(' ', '_')
