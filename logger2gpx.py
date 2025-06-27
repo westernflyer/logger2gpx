@@ -284,8 +284,8 @@ def main():
         filename += '.gpx'
 
     # Calculate the starting and ending times
-    start_time_str = args.start or config_dict['default_time_range']['start_time']
-    end_time_str = args.end or config_dict['default_time_range']['end_time']
+    start_time_str = args.start or config_dict['default_time_range'].get('start_time')
+    end_time_str = args.end or config_dict['default_time_range'].get('end_time')
     start_timestamp = parse_time_input(start_time_str, config_dict['time_format'])
     end_timestamp = parse_time_input(end_time_str, config_dict['time_format'])
 
