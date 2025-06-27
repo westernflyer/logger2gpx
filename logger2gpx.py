@@ -13,6 +13,7 @@ import math
 import os
 import sqlite3
 from datetime import datetime
+from typing import Iterator
 from xml.dom import minidom
 from xml.etree.ElementTree import Element, SubElement, tostring
 
@@ -21,9 +22,10 @@ import yaml
 
 def fetch_data(db_path: str,
                start_time: float | None = None,
-               end_time: float | None = None) -> list[tuple]:
+               end_time: float | None = None) -> Iterator[tuple[float|int, float, float]]:
     """
-    Fetches track data from the database within an optional time range, ordered by timestamp.
+    Generator function that fetches track data from the database within an optional time range,
+    ordered by timestamp.
 
     This function queries the database table `location_data` to retrieve data including
     timestamp, latitude, and longitude. Optional parameters `start_time` and
@@ -37,8 +39,8 @@ def fetch_data(db_path: str,
         end_time: Optional Unix epoch time for end of range. All returned records will before or
             at this time
 
-    Returns
-        List of (timestamp, latitude, longitude) tuples ordered by timestamp
+    Yields
+        Tuples (timestamp, latitude, longitude) ordered by timestamp
     """
 
     params = []
@@ -62,31 +64,33 @@ def fetch_data(db_path: str,
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute(query, params)
-        data = cursor.fetchall()
+        for row in cursor:
+            yield row
 
-    return data
 
 
-def filter_data(data: list[tuple], min_distance: float) -> list[tuple[float | int, float, float]]:
+def filter_data(data: Iterator[tuple[float|int, float, float]],
+                min_distance: float) -> Iterator[tuple[float | int, float, float]]:
     """
-    Filters a dataset of geographic coordinates to ensure that consecutive
-    points meet a minimum distance criterion.
+    Generator function that filters a dataset of geographic coordinates such
+    that consecutive points meet a minimum distance criterion.
 
     Parameters
-        data: A list of tuples, where each tuple represents a data row containing
-            a timestamp, latitude, and longitude. Latitude and longitude may be None
+        data: An iterator that returns tuples, where each tuple consists of
+            (timestamp, latitude, longitude). None
             for invalid or missing coordinates.
         min_distance: The minimum distance in meters.  Zero (0) to include all points.
 `
-    Returns
-        A filtered list of tuples from the original dataset, containing only points
+    Yields
+        tuples (timestamp, latitude, longitude) ordered by timestamp, containing only points
         that are either the first valid point or exceed the specified minimum
         distance from the previous valid point.
     """
-    filtered_data = []
+
     last_lat, last_lon = None, None
 
     for row in data:
+        # Unpack the row
         timestamp, lat, lon = row
 
         # Skip points with NULL coordinates
@@ -99,14 +103,12 @@ def filter_data(data: list[tuple], min_distance: float) -> list[tuple[float | in
             if distance < min_distance:
                 continue
 
-        filtered_data.append(row)
+        yield row
         last_lat, last_lon = lat, lon
-
-    return filtered_data
 
 
 def create_gpx(config_dict: dict,
-               track_data: list[tuple[float | int, float, float]],
+               track_data: Iterator[tuple[float | int, float, float]],
                start_time_str: str | None = None,
                end_time_str: str | None = None) -> Element:
     """
@@ -121,10 +123,7 @@ def create_gpx(config_dict: dict,
         config_dict: A dictionary containing configuration information, including
             details for generating author, GPX name, description, and track name. These
             are used to populate the metadata and track details of the GPX structure.
-        track_data: A list of tuples,
-            where each tuple contains a timestamp (as float or int), latitude (as float),
-            and longitude (as float). Points with valid latitude and longitude are added
-            to the GPX track segment.
+        track_data: An iterator that returns tuples (timestamp, latitude, longitude).
         start_time_str: An optional string representing the start time. If
             provided, it is incorporated into the metadata description. Defaults to None.
         end_time_str: An optional string representing the end time. If
@@ -245,10 +244,18 @@ def parse_time_input(time_str: str | None, time_format: str) -> int | None:
 
 
 def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate distance between two points using Haversine formula."""
-    if None in [lat1, lon1, lat2, lon2]:
-        return float('inf')
+    """
+    Calculate the great-circle distance in meters between two latitude/longitude points.
 
+    Parameters:
+        lat1: Latitude of the first point in degrees. Must not be None.
+        lon1: Longitude of the first point in degrees. Must not be None.
+        lat2: Latitude of the second point in degrees. Must not be None.
+        lon2: Longitude of the second point in degrees. Must not be None.
+
+    Returns:
+        The great-circle distance between the two points in meters.
+    """
     # Convert to radians
     lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
 
